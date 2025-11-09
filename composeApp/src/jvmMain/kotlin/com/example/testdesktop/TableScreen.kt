@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.*
+import java.io.File
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,7 +66,7 @@ fun TableScreen(
             singleLine = true
         )
 
-        // Info bar
+        // Info bar with export button
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -79,23 +80,135 @@ fun TableScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             
-            // Page size selector
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Hiển thị:",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                listOf(10, 20, 50, 100).forEach { size ->
-                    FilterChip(
-                        selected = uiState.pageSize == size,
-                        onClick = { viewModel.onEvent(TableUiEvent.ChangePageSize(size)) },
-                        label = { Text("$size") }
+                // Export button
+                Button(
+                    onClick = { viewModel.onEvent(TableUiEvent.ExportToExcel) },
+                    enabled = uiState.exportStatus !is ExportStatus.Exporting,
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = "Export to Excel",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = when (uiState.exportStatus) {
+                            is ExportStatus.Exporting -> "Đang xuất..."
+                            else -> "Xuất Excel"
+                        }
                     )
                 }
+                
+                // Page size selector
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Hiển thị:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    listOf(10, 20, 50, 100).forEach { size ->
+                        FilterChip(
+                            selected = uiState.pageSize == size,
+                            onClick = { viewModel.onEvent(TableUiEvent.ChangePageSize(size)) },
+                            label = { Text("$size") }
+                        )
+                    }
+                }
             }
+        }
+        
+        // Export status snackbar
+        when (val status = uiState.exportStatus) {
+            is ExportStatus.Success -> {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Success",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Đã xuất file thành công: ${File(status.filePath).name}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                        IconButton(onClick = { viewModel.dismissExportMessage() }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+            }
+            is ExportStatus.Error -> {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Error,
+                                contentDescription = "Error",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                text = "Lỗi xuất file: ${status.message}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                        IconButton(onClick = { viewModel.dismissExportMessage() }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+            }
+            else -> { /* No message */ }
         }
 
         // Table

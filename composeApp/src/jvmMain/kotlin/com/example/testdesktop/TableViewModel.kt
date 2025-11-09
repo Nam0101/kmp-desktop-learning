@@ -1,12 +1,18 @@
 package com.example.testdesktop
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.testdesktop.data.Medication
 import com.example.testdesktop.data.getSampleMedications
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import javax.swing.JFileChooser
+import javax.swing.filechooser.FileNameExtensionFilter
+import java.io.File
 
 enum class SortColumn {
     CODE, NAME, INITIAL_STOCK, IMPORTED, EXPORTED, FINAL_STOCK
@@ -31,8 +37,16 @@ data class TableUiState(
         SortColumn.IMPORTED to 120f,
         SortColumn.EXPORTED to 120f,
         SortColumn.FINAL_STOCK to 120f
-    )
+    ),
+    val exportStatus: ExportStatus = ExportStatus.Idle
 )
+
+sealed interface ExportStatus {
+    data object Idle : ExportStatus
+    data object Exporting : ExportStatus
+    data class Success(val filePath: String) : ExportStatus
+    data class Error(val message: String) : ExportStatus
+}
 
 sealed interface TableUiEvent {
     data class Search(val query: String) : TableUiEvent
@@ -42,6 +56,7 @@ sealed interface TableUiEvent {
     data class GoToPage(val page: Int) : TableUiEvent
     data class ChangePageSize(val pageSize: Int) : TableUiEvent
     data class ResizeColumn(val column: SortColumn, val newWidth: Float) : TableUiEvent
+    data object ExportToExcel : TableUiEvent
 }
 
 class TableViewModel : ViewModel() {
@@ -76,7 +91,77 @@ class TableViewModel : ViewModel() {
             is TableUiEvent.GoToPage -> goToPage(event.page)
             is TableUiEvent.ChangePageSize -> changePageSize(event.pageSize)
             is TableUiEvent.ResizeColumn -> resizeColumn(event.column, event.newWidth)
+            is TableUiEvent.ExportToExcel -> exportToExcel()
         }
+    }
+    
+    private fun exportToExcel() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _uiState.update { it.copy(exportStatus = ExportStatus.Exporting) }
+                
+                // Show file chooser dialog
+                val fileChooser = JFileChooser().apply {
+                    dialogTitle = "Lưu file Excel"
+                    fileFilter = FileNameExtensionFilter("Excel Files (*.xlsx)", "xlsx")
+                    selectedFile = File(ExcelExporter.getDefaultFileName())
+                }
+                
+                val userSelection = fileChooser.showSaveDialog(null)
+                
+                if (userSelection == JFileChooser.APPROVE_OPTION) {
+                    var fileToSave = fileChooser.selectedFile
+                    
+                    // Ensure .xlsx extension
+                    if (!fileToSave.name.endsWith(".xlsx", ignoreCase = true)) {
+                        fileToSave = File(fileToSave.absolutePath + ".xlsx")
+                    }
+                    
+                    // Export the filtered medications (respects current search/filters)
+                    val result = ExcelExporter.exportToExcel(
+                        _uiState.value.filteredMedications,
+                        fileToSave.absolutePath
+                    )
+                    
+                    result.fold(
+                        onSuccess = { filePath ->
+                            _uiState.update { it.copy(exportStatus = ExportStatus.Success(filePath)) }
+                            // Reset status after 3 seconds
+                            launch {
+                                kotlinx.coroutines.delay(3000)
+                                _uiState.update { it.copy(exportStatus = ExportStatus.Idle) }
+                            }
+                        },
+                        onFailure = { error ->
+                            _uiState.update { 
+                                it.copy(exportStatus = ExportStatus.Error(error.message ?: "Lỗi không xác định"))
+                            }
+                            // Reset status after 5 seconds
+                            launch {
+                                kotlinx.coroutines.delay(5000)
+                                _uiState.update { it.copy(exportStatus = ExportStatus.Idle) }
+                            }
+                        }
+                    )
+                } else {
+                    // User cancelled
+                    _uiState.update { it.copy(exportStatus = ExportStatus.Idle) }
+                }
+            } catch (e: Exception) {
+                _uiState.update { 
+                    it.copy(exportStatus = ExportStatus.Error(e.message ?: "Lỗi không xác định"))
+                }
+                // Reset status after 5 seconds
+                launch {
+                    kotlinx.coroutines.delay(5000)
+                    _uiState.update { it.copy(exportStatus = ExportStatus.Idle) }
+                }
+            }
+        }
+    }
+    
+    fun dismissExportMessage() {
+        _uiState.update { it.copy(exportStatus = ExportStatus.Idle) }
     }
 
     private fun resizeColumn(column: SortColumn, newWidth: Float) {

@@ -28,6 +28,12 @@ kotlin {
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
+            // Apache POI for Excel export
+            implementation("org.apache.poi:poi:5.2.5")
+            implementation("org.apache.poi:poi-ooxml:5.2.5")
+            // Logging implementation for Apache POI
+            implementation("org.apache.logging.log4j:log4j-core:2.20.0")
+            implementation("org.apache.logging.log4j:log4j-api:2.20.0")
         }
     }
 }
